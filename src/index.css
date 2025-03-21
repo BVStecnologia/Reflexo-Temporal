@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply text-gray-900 bg-gray-50 scroll-smooth;
+  }
+  
+  body {
+    @apply font-sans;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-semibold;
+  }
+}
+
+@layer components {
+  .container-custom {
+    @apply container mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md px-5 py-2.5 font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed;
+  }
+  
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-secondary-600 text-white hover:bg-secondary-700 focus:ring-secondary-500;
+  }
+  
+  .btn-outline {
+    @apply btn border-2 border-primary-600 text-primary-600 hover:bg-primary-50 focus:ring-primary-500;
+  }
+  
+  .card {
+    @apply rounded-xl bg-white p-6 shadow-md;
+  }
+  
+  .glass {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl;
+  }
+  
+  .input {
+    @apply rounded-md border-gray-300 focus:border-primary-500 focus:ring-primary-500;
+  }
+}
+
+/* Estilo para animação de ondas temporais */
+.wave-animation {
+  animation: moveWave 8s ease-in-out infinite alternate;
+  background: linear-gradient(90deg, rgba(74, 103, 245, 0.1) 0%, rgba(134, 88, 247, 0.1) 100%);
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  opacity: 0.5;
+  border-radius: 40%;
+}
+
+@keyframes moveWave {
+  from { transform: rotate(0deg) translate(-100px) rotate(0deg); }
+  to { transform: rotate(360deg) translate(100px) rotate(-360deg); }
+}
+
+.gradient-text {
+  background: linear-gradient(90deg, #4a67f5, #8658f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-fill-color: transparent;
+}
+
+.typing-animation::after {
+  content: "";
+  width: 5px;
+  height: 15px;
+  background-color: #8658f7;
+  display: inline-block;
+  animation: blink 1s infinite;
+  margin-left: 4px;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
