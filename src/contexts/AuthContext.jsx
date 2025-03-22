@@ -1,12 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { useNavigate } from 'react-router-dom'
-
-// Inicialização do cliente Supabase
-// Em produção, essas chaves deveriam vir de variáveis de ambiente
-const supabaseUrl = 'https://example.supabase.co' // Este é um URL de exemplo
-const supabaseKey = 'your-supabase-key' // Esta é uma chave de exemplo
-const supabase = createClient(supabaseUrl, supabaseKey)
+import { supabase } from '../services/supabase'
+import { getUserProfile } from '../services/supabase'
 
 const AuthContext = createContext()
 
@@ -16,128 +11,217 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  
-  // Modo de demonstração para fins de desenvolvimento
-  const [mockUser, setMockUser] = useState(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authError, setAuthError] = useState(null)
+
+  // Função para buscar o perfil do usuário
+  const fetchUserProfile = async (userId) => {
+    try {
+      const { data, error } = await getUserProfile(userId)
+      
+      if (error) {
+        console.error('Erro ao buscar perfil:', error)
+        return null
+      }
+      
+      return data
+    } catch (error) {
+      console.error('Erro ao buscar perfil:', error)
+      return null
+    }
+  }
 
   useEffect(() => {
-    // Em um ambiente real, verificaríamos a sessão com o Supabase
-    // Como estamos no modo de demonstração, vamos apenas configurar o estado inicial
-    setLoading(false)
-    
-    // Verificar se há um usuário mockado no localStorage (para persistência na demonstração)
-    const savedMockUser = localStorage.getItem('mockUser')
-    if (savedMockUser) {
+    // Função imediata para buscar a sessão atual
+    const initAuth = async () => {
+      setLoading(true)
+      
       try {
-        const parsedUser = JSON.parse(savedMockUser)
-        setMockUser(parsedUser)
-        setIsAuthenticated(true)
-      } catch (e) {
-        localStorage.removeItem('mockUser')
+        // Verificar se já existe uma sessão
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (session?.user) {
+          setUser(session.user)
+          
+          // Buscar o perfil do usuário
+          const userProfile = await fetchUserProfile(session.user.id)
+          setProfile(userProfile)
+        }
+      } catch (error) {
+        console.error('Erro na inicialização da autenticação:', error)
+      } finally {
+        setLoading(false)
+      }
+      
+      // Configurar o listener para mudanças de auth state
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          setLoading(true)
+          
+          if (session?.user) {
+            setUser(session.user)
+            
+            // Atualizar o perfil quando o estado de autenticação mudar
+            const userProfile = await fetchUserProfile(session.user.id)
+            setProfile(userProfile)
+          } else {
+            setUser(null)
+            setProfile(null)
+          }
+          
+          setLoading(false)
+        }
+      )
+      
+      return () => {
+        subscription?.unsubscribe()
       }
     }
+    
+    initAuth()
   }, [])
 
-  // Função para login (modo de demonstração)
+  // Função para login
   async function login(email, password) {
+    setAuthError(null)
+    
     try {
-      // Validação básica
-      if (!email) {
-        return { data: null, error: { message: 'Email é obrigatório' } }
-      }
-      if (!password) {
-        return { data: null, error: { message: 'Senha é obrigatória' } }
-      }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
       
-      // Em um ambiente real, isso seria verificado pelo Supabase
-      // Para demo, aceitamos qualquer combo de email/senha válido
-      if (password.length < 6) {
-        return { data: null, error: { message: 'Senha deve ter pelo menos 6 caracteres' } }
+      if (error) {
+        setAuthError(error.message)
+        return { data: null, error }
       }
       
-      // Criar usuário mockado
-      const mockUserData = {
-        id: 'demo-user-id',
-        email: email,
-        name: email.split('@')[0],
-        created_at: new Date().toISOString(),
-      }
-      
-      setMockUser(mockUserData)
-      setIsAuthenticated(true)
-      localStorage.setItem('mockUser', JSON.stringify(mockUserData))
-      
-      return { data: { user: mockUserData }, error: null }
+      // Sucesso
+      return { data, error: null }
     } catch (error) {
-      return { data: null, error: { message: 'Erro no login' } }
+      setAuthError('Erro inesperado durante o login')
+      return { data: null, error }
     }
   }
 
-  // Função para cadastro (modo de demonstração)
+  // Função para cadastro
   async function signup(email, password, metadata) {
+    setAuthError(null)
+    
     try {
-      // Validação básica
-      if (!email) {
-        return { data: null, error: { message: 'Email é obrigatório' } }
-      }
-      if (!password) {
-        return { data: null, error: { message: 'Senha é obrigatória' } }
-      }
-      if (password.length < 6) {
-        return { data: null, error: { message: 'Senha deve ter pelo menos 6 caracteres' } }
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: metadata,
+        },
+      })
+      
+      if (error) {
+        setAuthError(error.message)
+        return { data: null, error }
       }
       
-      // Criar usuário mockado
-      const mockUserData = {
-        id: 'demo-user-id',
-        email: email,
-        name: metadata?.name || email.split('@')[0],
-        created_at: new Date().toISOString(),
-        ...metadata
-      }
-      
-      setMockUser(mockUserData)
-      setIsAuthenticated(true)
-      localStorage.setItem('mockUser', JSON.stringify(mockUserData))
-      
-      return { data: { user: mockUserData }, error: null }
+      // Sucesso
+      return { data, error: null }
     } catch (error) {
-      return { data: null, error: { message: 'Erro no cadastro' } }
+      setAuthError('Erro inesperado durante o cadastro')
+      return { data: null, error }
     }
   }
 
-  // Função para logout (modo de demonstração)
+  // Função para logout
   async function logout() {
-    setMockUser(null)
-    setIsAuthenticated(false)
-    localStorage.removeItem('mockUser')
-    return { error: null }
-  }
-
-  // Função para recuperação de senha (modo de demonstração)
-  async function resetPassword(email) {
     try {
-      if (!email) {
-        return { data: null, error: { message: 'Email é obrigatório' } }
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error('Erro ao fazer logout:', error)
+        return { error }
       }
       
-      // Simular sucesso
-      return { data: { success: true }, error: null }
+      // Limpar o estado
+      setUser(null)
+      setProfile(null)
+      
+      return { error: null }
     } catch (error) {
-      return { data: null, error: { message: 'Erro na recuperação de senha' } }
+      console.error('Erro ao fazer logout:', error)
+      return { error }
     }
+  }
+
+  // Função para recuperação de senha
+  async function resetPassword(email) {
+    setAuthError(null)
+    
+    try {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      
+      if (error) {
+        setAuthError(error.message)
+        return { data: null, error }
+      }
+      
+      // Sucesso
+      return { data, error: null }
+    } catch (error) {
+      setAuthError('Erro inesperado ao solicitar recuperação de senha')
+      return { data: null, error }
+    }
+  }
+
+  // Função para atualizar senha
+  async function updatePassword(newPassword) {
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        password: newPassword
+      })
+      
+      if (error) {
+        return { data: null, error }
+      }
+      
+      return { data, error: null }
+    } catch (error) {
+      return { data: null, error }
+    }
+  }
+
+  // Função para verificar limites diários
+  function checkDailyLimit(type) {
+    if (!profile) return { allowed: false, remaining: 0 }
+    
+    const limits = {
+      conversation: profile.subscription === 'free' ? 3 : Infinity,
+      dream: profile.subscription === 'free' ? 2 : Infinity
+    }
+    
+    const current = type === 'conversation' 
+      ? profile.daily_conversation_count 
+      : profile.daily_dream_count
+    
+    const remaining = Math.max(0, limits[type] - current)
+    const allowed = current < limits[type]
+    
+    return { allowed, remaining }
   }
 
   const value = {
-    user: mockUser,
-    isAuthenticated,
+    user,
+    profile,
+    loading,
+    authError,
+    isAuthenticated: !!user,
     login,
     signup,
     logout,
     resetPassword,
-    loading,
+    updatePassword,
+    checkDailyLimit
   }
 
   return (

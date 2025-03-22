@@ -1,99 +1,212 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from '../contexts/ThemeContext'
 import { useAuth } from '../contexts/AuthContext'
+import { createConversation, addMessage, incrementDailyCounter } from '../services/supabase'
 
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 
-// Simulação de mensagens
-const initialMessages = [
-  {
-    id: 1,
-    text: 'Olá! Eu sou você do futuro (2030). O que gostaria de me perguntar hoje?',
-    sender: 'future',
-    timestamp: new Date(Date.now() - 1000 * 60 * 2) // 2 minutos atrás
-  }
+// Respostas simuladas para demonstração quando não há IA real
+const simulatedResponses = [
+  "Essa decisão que você está considerando agora vai abrir portas inesperadas para você. Confie em sua intuição.",
+  "Lembre-se de valorizar mais o autocuidado. Nos próximos anos, sua saúde mental será seu maior ativo.",
+  "Aquela oportunidade que parece insignificante hoje será crucial para sua trajetória. Dê a ela a atenção que merece.",
+  "Você está preocupado com o caminho errado. O que realmente importará daqui a 5 anos é algo que você ainda nem considerou.",
+  "As conexões que você está fazendo agora serão fundamentais no futuro. Cultive essas relações.",
+  "Aquela ideia que você tem medo de compartilhar? É exatamente ela que trará sua maior realização profissional.",
+  "O conhecimento que você está adquirindo agora, mesmo que pareça sem propósito imediato, será a base do seu sucesso futuro.",
+  "Aprenda a dizer não mais frequentemente. Seu tempo e energia são seus recursos mais valiosos.",
+  "Aquela dificuldade que está enfrentando vai moldar sua resiliência de uma forma que você nem imagina.",
+  "Confie mais em si mesmo. A autoconfiança que você desenvolverá nos próximos anos transformará sua vida."
 ]
 
 const ConversationPage = () => {
   const { darkMode } = useTheme()
-  const { user } = useAuth()
-  const [messages, setMessages] = useState(initialMessages)
+  const { user, profile, checkDailyLimit } = useAuth()
+  const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
-  const [remainingConversations, setRemainingConversations] = useState(3)
   const [showLimitModal, setShowLimitModal] = useState(false)
+  const [conversationId, setConversationId] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [limit, setLimit] = useState({ allowed: false, remaining: 0 })
   
+  const navigate = useNavigate()
   const messagesEndRef = useRef(null)
+  
+  // Buscar limite diário
+  useEffect(() => {
+    if (profile) {
+      const limitInfo = checkDailyLimit('conversation')
+      setLimit(limitInfo)
+    }
+  }, [profile, checkDailyLimit])
+  
+  // Iniciar uma nova conversa quando a página carregar
+  useEffect(() => {
+    const initConversation = async () => {
+      if (user) {
+        try {
+          setIsLoading(true)
+          
+          // Criar uma nova conversa
+          const title = `Conversa em ${new Date().toLocaleDateString()}`
+          const { data, error } = await createConversation(user.id, title)
+          
+          if (error) {
+            console.error('Erro ao criar conversa:', error)
+            return
+          }
+          
+          // Guardar o ID da conversa
+          const conversationId = data[0].id
+          setConversationId(conversationId)
+          
+          // Adicionar mensagem inicial do "eu futuro"
+          const welcomeMessage = "Olá! Eu sou você do futuro (2030). O que gostaria de me perguntar hoje?"
+          const { data: messageData, error: messageError } = await addMessage(
+            conversationId,
+            welcomeMessage,
+            'future'
+          )
+          
+          if (messageError) {
+            console.error('Erro ao adicionar mensagem:', messageError)
+            return
+          }
+          
+          // Atualizar estado das mensagens
+          setMessages([{
+            id: messageData[0].id,
+            text: welcomeMessage,
+            sender: 'future',
+            timestamp: new Date(messageData[0].timestamp)
+          }])
+          
+        } catch (error) {
+          console.error('Erro ao inicializar conversa:', error)
+        } finally {
+          setIsLoading(false)
+        }
+      }
+    }
+    
+    initConversation()
+  }, [user])
   
   // Scroll para o final quando novas mensagens são adicionadas
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
   
-  const sendMessage = () => {
-    if (!newMessage.trim()) return
+  // Verificar autenticação
+  useEffect(() => {
+    if (!user && !isLoading) {
+      navigate('/login')
+    }
+  }, [user, isLoading, navigate])
+  
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !conversationId) return
     
     // Verificar limite de mensagens
-    if (remainingConversations <= 0) {
+    if (!limit.allowed) {
       setShowLimitModal(true)
       return
     }
     
-    // Adicionar mensagem do usuário
-    const userMessage = {
-      id: messages.length + 1,
-      text: newMessage,
-      sender: 'user',
-      timestamp: new Date()
-    }
-    
-    setMessages(prev => [...prev, userMessage])
-    setNewMessage('')
-    
-    // Simular "digitando..."
-    setIsTyping(true)
-    
-    // Timer para simular a resposta
-    setTimeout(() => {
-      // Gerar resposta do futuro
-      const futureResponse = {
-        id: messages.length + 2,
-        text: generateFutureResponse(newMessage),
-        sender: 'future',
-        timestamp: new Date()
+    try {
+      // Adicionar mensagem do usuário
+      const { data: userMessageData, error: userMessageError } = await addMessage(
+        conversationId,
+        newMessage,
+        'present'
+      )
+      
+      if (userMessageError) {
+        console.error('Erro ao enviar mensagem:', userMessageError)
+        return
       }
       
-      setMessages(prev => [...prev, futureResponse])
-      setIsTyping(false)
+      // Atualizar estado das mensagens
+      const userMessage = {
+        id: userMessageData[0].id,
+        text: newMessage,
+        sender: 'present',
+        timestamp: new Date(userMessageData[0].timestamp)
+      }
       
-      // Decrementar contagem restante
-      setRemainingConversations(prev => prev - 1)
-    }, 2000 + Math.random() * 2000) // Entre 2 e 4 segundos
-  }
-  
-  // Função para resposta simulada do "eu futuro"
-  const generateFutureResponse = (question) => {
-    const responses = [
-      "Essa decisão que você está considerando agora vai abrir portas inesperadas para você. Confie em sua intuição.",
-      "Lembre-se de valorizar mais o autocuidado. Nos próximos anos, sua saúde mental será seu maior ativo.",
-      "Aquela oportunidade que parece insignificante hoje será crucial para sua trajetória. Dê a ela a atenção que merece.",
-      "Você está preocupado com o caminho errado. O que realmente importará daqui a 5 anos é algo que você ainda nem considerou.",
-      "As conexões que você está fazendo agora serão fundamentais no futuro. Cultive essas relações.",
-      "Aquela ideia que você tem medo de compartilhar? É exatamente ela que trará sua maior realização profissional.",
-      "O conhecimento que você está adquirindo agora, mesmo que pareça sem propósito imediato, será a base do seu sucesso futuro.",
-      "Aprenda a dizer não mais frequentemente. Seu tempo e energia são seus recursos mais valiosos.",
-      "Aquela dificuldade que está enfrentando vai moldar sua resiliência de uma forma que você nem imagina.",
-      "Confie mais em si mesmo. A autoconfiança que você desenvolverá nos próximos anos transformará sua vida."
-    ]
-    
-    return responses[Math.floor(Math.random() * responses.length)]
+      setMessages(prev => [...prev, userMessage])
+      setNewMessage('')
+      
+      // Simular "digitando..."
+      setIsTyping(true)
+      
+      // Incrementar contador diário
+      await incrementDailyCounter(user.id, 'conversation')
+      
+      // Atualizar informações de limite
+      const newLimitInfo = checkDailyLimit('conversation')
+      setLimit(newLimitInfo)
+      
+      // Timer para simular a resposta do modelo de IA
+      setTimeout(async () => {
+        try {
+          // Em uma implementação real, aqui faríamos a chamada para uma API de IA
+          // Por enquanto, usamos respostas simuladas
+          const futureResponse = simulatedResponses[Math.floor(Math.random() * simulatedResponses.length)]
+          
+          // Registrar a resposta no banco de dados
+          const { data: futureMessageData, error: futureMessageError } = await addMessage(
+            conversationId,
+            futureResponse,
+            'future'
+          )
+          
+          if (futureMessageError) {
+            console.error('Erro ao registrar resposta:', futureMessageError)
+            return
+          }
+          
+          // Atualizar estado das mensagens
+          const responseMessage = {
+            id: futureMessageData[0].id,
+            text: futureResponse,
+            sender: 'future',
+            timestamp: new Date(futureMessageData[0].timestamp)
+          }
+          
+          setMessages(prev => [...prev, responseMessage])
+          setIsTyping(false)
+          
+        } catch (error) {
+          console.error('Erro ao processar resposta:', error)
+          setIsTyping(false)
+        }
+      }, 2000 + Math.random() * 2000) // Entre 2 e 4 segundos
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error)
+    }
   }
   
   const formatTime = (date) => {
     return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  }
+  
+  if (isLoading) {
+    return (
+      <>
+        <Navbar />
+        <div className={`min-h-screen pt-20 flex items-center justify-center ${darkMode ? 'bg-gray-950 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
+          <div className="text-center">
+            <div className="inline-block w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p>Inicializando conversa...</p>
+          </div>
+        </div>
+      </>
+    )
   }
   
   return (
@@ -114,7 +227,7 @@ const ConversationPage = () => {
             </Link>
             
             <div className={`px-3 py-1 rounded-full text-xs font-medium ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
-              {remainingConversations} conversas restantes hoje
+              {limit.remaining} conversas restantes hoje
             </div>
           </div>
           
@@ -142,17 +255,17 @@ const ConversationPage = () => {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.3 }}
-                        className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                        className={`flex ${message.sender === 'present' ? 'justify-end' : 'justify-start'}`}
                       >
-                        <div className={`flex items-start gap-3 max-w-[80%] ${message.sender === 'user' ? 'flex-row-reverse' : ''}`}>
+                        <div className={`flex items-start gap-3 max-w-[80%] ${message.sender === 'present' ? 'flex-row-reverse' : ''}`}>
                           <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                            message.sender === 'user' 
+                            message.sender === 'present' 
                               ? darkMode ? 'bg-primary-700' : 'bg-primary-100' 
                               : 'bg-gradient-to-br from-secondary-500 to-primary-500'
                           }`}>
-                            {message.sender === 'user' ? (
+                            {message.sender === 'present' ? (
                               <span className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-primary-700'}`}>
-                                {user?.email?.[0].toUpperCase() || 'U'}
+                                {user?.email?.[0].toUpperCase() || 'P'}
                               </span>
                             ) : (
                               <span className="text-xs font-bold text-white">F</span>
@@ -161,14 +274,14 @@ const ConversationPage = () => {
                           
                           <div>
                             <div className={`rounded-2xl p-3 mb-1 ${
-                              message.sender === 'user' 
+                              message.sender === 'present' 
                                 ? darkMode ? 'bg-primary-700 text-white' : 'bg-primary-100 text-primary-800'
                                 : darkMode ? 'bg-secondary-800 text-white' : 'bg-secondary-100 text-secondary-800'
                             }`}>
                               <p>{message.text}</p>
                             </div>
-                            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'} ${message.sender === 'user' ? 'text-right' : ''}`}>
-                              {message.sender === 'user' ? 'Você (2025)' : 'Você (2030)'} · {formatTime(message.timestamp)}
+                            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'} ${message.sender === 'present' ? 'text-right' : ''}`}>
+                              {message.sender === 'present' ? 'Você (2025)' : 'Você (2030)'} · {formatTime(message.timestamp)}
                             </p>
                           </div>
                         </div>

@@ -27,6 +27,7 @@ const RegisterPage = () => {
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
+  const [successMessage, setSuccessMessage] = useState('')
   
   const { signup } = useAuth()
   const { darkMode } = useTheme()
@@ -69,6 +70,12 @@ const RegisterPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    setSuccessMessage('')
+    
+    if (!name) {
+      setError('O nome é obrigatório')
+      return
+    }
     
     if (interests.length === 0) {
       setError('Selecione pelo menos um interesse')
@@ -78,19 +85,48 @@ const RegisterPage = () => {
     setIsLoading(true)
     
     try {
+      // Calcular idade baseada na data de nascimento
+      let age = null
+      if (birthdate) {
+        const birthDate = new Date(birthdate)
+        const today = new Date()
+        age = today.getFullYear() - birthDate.getFullYear()
+        const m = today.getMonth() - birthDate.getMonth()
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+          age--
+        }
+      }
+      
+      // Dados de perfil para o Supabase
       const metadata = {
         name,
         birthdate,
+        age,
         interests,
+        // Dados iniciais para o perfil
+        aspirations: [],
+        daily_conversation_count: 0,
+        daily_dream_count: 0,
+        last_reset_date: new Date().toISOString().split('T')[0],
       }
       
-      const { error } = await signup(email, password, metadata)
+      const { data, error } = await signup(email, password, metadata)
       
-      if (error) throw new Error(error.message)
+      if (error) {
+        throw new Error(error.message || 'Erro no cadastro')
+      }
       
-      navigate('/dashboard')
+      if (data?.user) {
+        setSuccessMessage('Conta criada com sucesso! Redirecionando...')
+        
+        // Redirecionar após timeout curto
+        setTimeout(() => {
+          navigate('/dashboard')
+        }, 1500)
+      }
     } catch (err) {
-      setError('Não foi possível criar sua conta. Verifique os dados e tente novamente.')
+      console.error('Erro no cadastro:', err)
+      setError(err.message || 'Não foi possível criar sua conta. Verifique os dados e tente novamente.')
     } finally {
       setIsLoading(false)
     }
@@ -147,6 +183,12 @@ const RegisterPage = () => {
                 {error && (
                   <div className="mb-6 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
                     {error}
+                  </div>
+                )}
+
+                {successMessage && (
+                  <div className="mb-6 p-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-sm">
+                    {successMessage}
                   </div>
                 )}
                 
