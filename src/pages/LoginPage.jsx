@@ -7,6 +7,7 @@ import { useTheme } from '../contexts/ThemeContext'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import WaveBackground from '../components/WaveBackground'
+import GoogleIcon from '../assets/google-icon.svg'
 
 const LoginPage = () => {
   const [email, setEmail] = useState('')
@@ -17,7 +18,7 @@ const LoginPage = () => {
   const [resetEmail, setResetEmail] = useState('')
   const [resetSuccess, setResetSuccess] = useState(false)
   
-  const { login, resetPassword } = useAuth()
+  const { login, loginWithGoogle, resetPassword } = useAuth()
   const { darkMode } = useTheme()
   const navigate = useNavigate()
   
@@ -35,6 +36,22 @@ const LoginPage = () => {
     } catch (err) {
       setError('Email ou senha inválidos. Por favor, tente novamente.')
     } finally {
+      setIsLoading(false)
+    }
+  }
+  
+  const handleGoogleLogin = async () => {
+    setError('')
+    setIsLoading(true)
+    
+    try {
+      const { error } = await loginWithGoogle()
+      
+      if (error) throw new Error(error.message)
+      
+      // Não precisamos navegar aqui, o Supabase vai redirecionar para o Google
+    } catch (err) {
+      setError('Erro ao conectar com o Google. Por favor, tente novamente.')
       setIsLoading(false)
     }
   }
@@ -185,6 +202,33 @@ const LoginPage = () => {
                         disabled={isLoading}
                       >
                         {isLoading ? 'Entrando...' : 'Entrar'}
+                      </button>
+                    </div>
+                    
+                    <div className="relative my-4">
+                      <div className={`absolute inset-0 flex items-center ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                        <div className={`w-full border-t ${darkMode ? 'border-gray-800' : 'border-gray-300'}`}></div>
+                      </div>
+                      <div className="relative flex justify-center text-sm">
+                        <span className={`px-2 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-white text-gray-500'}`}>
+                          ou continue com
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <button
+                        type="button"
+                        onClick={handleGoogleLogin}
+                        className={`w-full flex items-center justify-center gap-2 py-2 px-4 border rounded-lg font-medium transition-colors ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-700 text-white hover:bg-gray-700' 
+                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                        } ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        disabled={isLoading}
+                      >
+                        <img src={GoogleIcon} alt="Google" className="w-5 h-5" />
+                        <span>Google</span>
                       </button>
                     </div>
                   </form>

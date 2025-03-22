@@ -82,7 +82,7 @@ export function AuthProvider({ children }) {
     initAuth()
   }, [])
 
-  // Função para login
+  // Função para login com email/senha
   async function login(email, password) {
     setAuthError(null)
     
@@ -101,6 +101,31 @@ export function AuthProvider({ children }) {
       return { data, error: null }
     } catch (error) {
       setAuthError('Erro inesperado durante o login')
+      return { data: null, error }
+    }
+  }
+  
+  // Função para login com Google
+  async function loginWithGoogle() {
+    setAuthError(null)
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`
+        }
+      })
+      
+      if (error) {
+        setAuthError(error.message)
+        return { data: null, error }
+      }
+      
+      // Sucesso - Neste caso, o usuário será redirecionado para o Google
+      return { data, error: null }
+    } catch (error) {
+      setAuthError('Erro inesperado durante o login com Google')
       return { data: null, error }
     }
   }
@@ -217,6 +242,7 @@ export function AuthProvider({ children }) {
     authError,
     isAuthenticated: !!user,
     login,
+    loginWithGoogle,
     signup,
     logout,
     resetPassword,

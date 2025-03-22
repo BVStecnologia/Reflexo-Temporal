@@ -3,23 +3,19 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from '../contexts/ThemeContext'
 import { useAuth } from '../contexts/AuthContext'
-import { createConversation, addMessage, incrementDailyCounter } from '../services/supabase'
+import { createConversation, addMessage, incrementDailyCounter, createShareCard } from '../services/supabase'
+import { generateFutureResponse } from '../services/anthropic'
 
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 
-// Respostas simuladas para demonstração quando não há IA real
-const simulatedResponses = [
+// Respostas de fallback caso a API falhe
+const fallbackResponses = [
   "Essa decisão que você está considerando agora vai abrir portas inesperadas para você. Confie em sua intuição.",
   "Lembre-se de valorizar mais o autocuidado. Nos próximos anos, sua saúde mental será seu maior ativo.",
   "Aquela oportunidade que parece insignificante hoje será crucial para sua trajetória. Dê a ela a atenção que merece.",
   "Você está preocupado com o caminho errado. O que realmente importará daqui a 5 anos é algo que você ainda nem considerou.",
-  "As conexões que você está fazendo agora serão fundamentais no futuro. Cultive essas relações.",
-  "Aquela ideia que você tem medo de compartilhar? É exatamente ela que trará sua maior realização profissional.",
-  "O conhecimento que você está adquirindo agora, mesmo que pareça sem propósito imediato, será a base do seu sucesso futuro.",
-  "Aprenda a dizer não mais frequentemente. Seu tempo e energia são seus recursos mais valiosos.",
-  "Aquela dificuldade que está enfrentando vai moldar sua resiliência de uma forma que você nem imagina.",
-  "Confie mais em si mesmo. A autoconfiança que você desenvolverá nos próximos anos transformará sua vida."
+  "As conexões que você está fazendo agora serão fundamentais no futuro. Cultive essas relações."
 ]
 
 const ConversationPage = () => {
@@ -28,6 +24,8 @@ const ConversationPage = () => {
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [shareSuccess, setShareSuccess] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [conversationId, setConversationId] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -151,43 +149,67 @@ const ConversationPage = () => {
       const newLimitInfo = checkDailyLimit('conversation')
       setLimit(newLimitInfo)
       
-      // Timer para simular a resposta do modelo de IA
-      setTimeout(async () => {
-        try {
-          // Em uma implementação real, aqui faríamos a chamada para uma API de IA
-          // Por enquanto, usamos respostas simuladas
-          const futureResponse = simulatedResponses[Math.floor(Math.random() * simulatedResponses.length)]
-          
-          // Registrar a resposta no banco de dados
-          const { data: futureMessageData, error: futureMessageError } = await addMessage(
-            conversationId,
-            futureResponse,
-            'future'
-          )
-          
-          if (futureMessageError) {
-            console.error('Erro ao registrar resposta:', futureMessageError)
-            return
-          }
-          
-          // Atualizar estado das mensagens
-          const responseMessage = {
-            id: futureMessageData[0].id,
-            text: futureResponse,
-            sender: 'future',
-            timestamp: new Date(futureMessageData[0].timestamp)
-          }
-          
-          setMessages(prev => [...prev, responseMessage])
-          setIsTyping(false)
-          
-        } catch (error) {
-          console.error('Erro ao processar resposta:', error)
-          setIsTyping(false)
+      try {
+        // Preparar dados do usuário para contextualização
+        const userData = {
+          name: profile?.name || user.email.split('@')[0],
+          interests: profile?.interests || [],
+          age: profile?.age || null
         }
-      }, 2000 + Math.random() * 2000) // Entre 2 e 4 segundos
+        
+        // Gerar resposta do "eu futuro" usando a API da Claude
+        const futureResponse = await generateFutureResponse(newMessage, userData)
+        
+        // Registrar a resposta no banco de dados
+        const { data: futureMessageData, error: futureMessageError } = await addMessage(
+          conversationId,
+          futureResponse,
+          'future'
+        )
+        
+        if (futureMessageError) {
+          console.error('Erro ao registrar resposta:', futureMessageError)
+          throw new Error('Erro ao salvar a resposta')
+        }
+        
+        // Atualizar estado das mensagens
+        const responseMessage = {
+          id: futureMessageData[0].id,
+          text: futureResponse,
+          sender: 'future',
+          timestamp: new Date(futureMessageData[0].timestamp)
+        }
+        
+        setMessages(prev => [...prev, responseMessage])
+        
+      } catch (error) {
+        console.error('Erro ao processar resposta com IA:', error)
+        
+        // Fallback: usar resposta simulada
+        const fallbackResponse = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)]
+        
+        const { data: fallbackMessageData } = await addMessage(
+          conversationId,
+          fallbackResponse,
+          'future'
+        )
+        
+        // Atualizar estado das mensagens com fallback
+        const fallbackMessage = {
+          id: fallbackMessageData?.[0]?.id || `fallback-${Date.now()}`,
+          text: fallbackResponse,
+          sender: 'future',
+          timestamp: new Date()
+        }
+        
+        setMessages(prev => [...prev, fallbackMessage])
+      } finally {
+        setIsTyping(false)
+      }
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error)
+      setIsTyping(false)
+      // Mostrar erro para o usuário se necessário
     }
   }
   
@@ -226,8 +248,63 @@ const ConversationPage = () => {
               Voltar ao Dashboard
             </Link>
             
-            <div className={`px-3 py-1 rounded-full text-xs font-medium ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
-              {limit.remaining} conversas restantes hoje
+            <div className="flex items-center gap-3">
+              <button
+                onClick={async () => {
+                  if (!conversationId || messages.length < 2) return;
+                  
+                  try {
+                    setIsSharing(true);
+                    // Criar compartilhamento
+                    const { data, error } = await createShareCard(
+                      user.id,
+                      'conversation',
+                      conversationId
+                    );
+                    
+                    if (error) throw error;
+                    
+                    setShareSuccess(true);
+                    // Esconder mensagem de sucesso após 3 segundos
+                    setTimeout(() => setShareSuccess(false), 3000);
+                  } catch (err) {
+                    console.error('Erro ao compartilhar conversa:', err);
+                  } finally {
+                    setIsSharing(false);
+                  }
+                }}
+                disabled={isSharing || messages.length < 2}
+                className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  isSharing || messages.length < 2
+                    ? darkMode ? 'bg-gray-800 text-gray-500' : 'bg-gray-200 text-gray-500'
+                    : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {isSharing ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                    <span>Compartilhando...</span>
+                  </>
+                ) : shareSuccess ? (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Compartilhado!</span>
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935-2.186 2.25 2.25 0 0 0-3.935-2.186" />
+                    </svg>
+                    <span>Compartilhar</span>
+                  </>
+                )}
+              </button>
+              
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
+                {limit.remaining} conversas restantes hoje
+              </div>
             </div>
           </div>
           

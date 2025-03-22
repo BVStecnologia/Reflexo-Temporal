@@ -3,47 +3,94 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
+import { getConversations, getDreams } from '../services/supabase'
 
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 
 const DashboardPage = () => {
-  const { user } = useAuth()
+  const { user, profile, checkDailyLimit } = useAuth()
   const { darkMode } = useTheme()
   const [conversations, setConversations] = useState([])
   const [dreams, setDreams] = useState([])
-  const [conversationsRemaining, setConversationsRemaining] = useState(3)
-  const [dreamsRemaining, setDreamsRemaining] = useState(2)
+  const [conversationsRemaining, setConversationsRemaining] = useState(0)
+  const [dreamsRemaining, setDreamsRemaining] = useState(0)
   const [loading, setLoading] = useState(true)
   
-  // Simulando carregamento de dados
+  // Atualizar limites diários
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // Dados simulados
-      setConversations([
-        {
-          id: 1,
-          date: new Date(2025, 2, 15),
-          topic: 'Carreira e propósito de vida',
-          previewMessage: 'Você encontrará um novo caminho que une sua paixão por tecnologia e seu desejo de ajudar as pessoas.'
-        },
-      ])
+    if (profile) {
+      const conversationLimit = checkDailyLimit('conversation');
+      const dreamLimit = checkDailyLimit('dream');
       
-      setDreams([
-        {
-          id: 1,
-          date: new Date(2025, 2, 14),
-          title: 'Sonho com oceano e montanhas',
-          emotion: 'Calma',
-          interpretation: 'Você está buscando equilíbrio entre desafios (montanhas) e emoções (oceano).'
-        },
-      ])
+      setConversationsRemaining(conversationLimit.remaining);
+      setDreamsRemaining(dreamLimit.remaining);
+    }
+  }, [profile, checkDailyLimit]);
+  
+  // Carregar dados do Supabase
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
       
-      setLoading(false)
-    }, 1500)
+      try {
+        // Buscar conversas
+        const { data: conversationsData, error: conversationsError } = await getConversations(user.id);
+        
+        if (conversationsError) {
+          console.error('Erro ao buscar conversas:', conversationsError);
+        } else {
+          // Processar dados das conversas
+          const processedConversations = conversationsData.map(conversation => {
+            const lastMessage = conversation.messages?.length > 0 
+              ? conversation.messages[conversation.messages.length - 1] 
+              : null;
+              
+            return {
+              id: conversation.id,
+              date: new Date(conversation.created_at),
+              topic: conversation.title,
+              previewMessage: lastMessage?.content || 'Inicie uma conversa...',
+              messages: conversation.messages || []
+            };
+          });
+          
+          setConversations(processedConversations);
+        }
+        
+        // Buscar sonhos
+        const { data: dreamsData, error: dreamsError } = await getDreams(user.id);
+        
+        if (dreamsError) {
+          console.error('Erro ao buscar sonhos:', dreamsError);
+        } else {
+          // Processar dados dos sonhos
+          const processedDreams = dreamsData.map(dream => {
+            const analysis = typeof dream.analysis === 'string' 
+              ? JSON.parse(dream.analysis) 
+              : dream.analysis;
+              
+            return {
+              id: dream.id,
+              date: new Date(dream.created_at),
+              title: dream.title,
+              emotion: dream.emotions?.[0] || 'Neutra',
+              interpretation: analysis?.interpretation?.slice(0, 100) + '...' || 'Sem análise disponível',
+              analysis: analysis
+            };
+          });
+          
+          setDreams(processedDreams);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    return () => clearTimeout(timer)
-  }, [])
+    fetchData();
+  }, [user])
   
   // Funções para formatação de data
   const formatDate = (date) => {

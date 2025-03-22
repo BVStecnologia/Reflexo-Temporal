@@ -81,8 +81,29 @@ Como você, 5 anos mais velho e sábio, responderia de forma autêntica?
     
     if (error) throw error
     
+    console.log('Resposta da API para conversa:', data);
+    
     // Extrair a resposta gerada
-    return data.content || "Desculpe, estou tendo dificuldade para responder agora. Tente me perguntar outra coisa."
+    // Garantir que a resposta é uma string
+    if (data === null || data === undefined) {
+      throw new Error('A resposta da API está vazia');
+    }
+    
+    // Garantir que não temos JSON acidental
+    let response = data;
+    if (typeof response === 'string' && response.trim().startsWith('{') && response.trim().endsWith('}')) {
+      try {
+        // Tentar extrair texto de um possível JSON
+        const parsed = JSON.parse(response);
+        if (parsed.text) {
+          response = parsed.text;
+        }
+      } catch (e) {
+        // Não é um JSON válido, manter a string original
+      }
+    }
+    
+    return response || "Desculpe, estou tendo dificuldade para responder agora. Tente me perguntar outra coisa."
   } catch (error) {
     console.error('Erro ao gerar resposta futura:', error)
     return "Estou tendo dificuldade para me conectar com você no futuro. Tente novamente em um momento."
@@ -115,7 +136,14 @@ Descrição: ${description}
 
 ${emotions.length > 0 ? `Emoções sentidas: ${emotions.join(', ')}` : 'Nenhuma emoção específica mencionada.'}
 
-Forneça uma análise detalhada no seguinte formato JSON:
+INSTRUÇÕES IMPORTANTES:
+1. Sua resposta DEVE ser EXCLUSIVAMENTE um objeto JSON válido, sem texto explicativo antes ou depois.
+2. O JSON deve seguir EXATAMENTE esta estrutura, mantendo as chaves exatamente como mostradas abaixo.
+3. Não use aspas simples, use apenas aspas duplas para as strings no JSON.
+4. Não use caracteres de escape desnecessários como \\n ou \\".
+5. Não inclua nenhuma explicação, apenas o JSON.
+
+Formato exato do JSON:
 {
   "symbols": [
     {"name": "SÍMBOLO PRINCIPAL 1", "meaning": "SIGNIFICADO DETALHADO"},
@@ -130,8 +158,6 @@ Forneça uma análise detalhada no seguinte formato JSON:
     "PERGUNTA REFLEXIVA 3?"
   ]
 }
-
-Não inclua nenhum texto além do JSON na sua resposta.
 `
     
     const { data, error } = await callAnthropic(prompt, {
@@ -143,14 +169,34 @@ Não inclua nenhum texto além do JSON na sua resposta.
     
     // Extrair e validar o JSON
     try {
-      const responseText = data.content || '';
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      let analysisText = data || '';
+      console.log('Resposta bruta da API:', analysisText);
+      
+      // Se não for uma string, converter para string
+      if (typeof analysisText !== 'string') {
+        analysisText = JSON.stringify(analysisText);
+      }
+      
+      // Tentar encontrar um JSON válido na resposta
+      const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const analysis = JSON.parse(jsonMatch[0]);
-        return { analysis, error: null };
+        analysisText = jsonMatch[0];
+        console.log('JSON extraído:', analysisText);
       } else {
+        console.error('Não foi possível encontrar JSON válido na resposta');
         throw new Error('Formato de resposta inválido');
       }
+      
+      // Tenta fazer o parse do JSON
+      const analysis = JSON.parse(analysisText);
+      
+      // Validar se o JSON tem a estrutura esperada
+      if (!analysis.symbols || !analysis.interpretation || !analysis.message_from_future || !analysis.reflection_questions) {
+        console.error('JSON não contém os campos esperados');
+        throw new Error('Estrutura de análise inválida');
+      }
+      
+      return { analysis, error: null };
     } catch (parseError) {
       console.error('Erro ao analisar resposta JSON:', parseError);
       throw new Error('Erro ao processar análise do sonho');

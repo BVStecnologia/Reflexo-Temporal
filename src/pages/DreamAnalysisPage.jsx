@@ -1,50 +1,60 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme } from '../contexts/ThemeContext'
+import { useAuth } from '../contexts/AuthContext'
+import { createDream, updateDream, incrementDailyCounter, createShareCard } from '../services/supabase'
+import { analyzeDream } from '../services/anthropic'
 
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 
-// Lista de emoções para seleção
 const emotions = [
-  { id: 'joy', label: 'Alegria', color: 'yellow' },
-  { id: 'fear', label: 'Medo', color: 'red' },
-  { id: 'sadness', label: 'Tristeza', color: 'blue' },
-  { id: 'confusion', label: 'Confusão', color: 'purple' },
-  { id: 'peace', label: 'Paz', color: 'green' },
-  { id: 'anxiety', label: 'Ansiedade', color: 'orange' },
-  { id: 'surprise', label: 'Surpresa', color: 'teal' },
-  { id: 'anger', label: 'Raiva', color: 'pink' },
+  { id: 'joy', label: 'Alegria', color: 'bg-yellow-500' },
+  { id: 'fear', label: 'Medo', color: 'bg-purple-500' },
+  { id: 'sadness', label: 'Tristeza', color: 'bg-blue-500' },
+  { id: 'anger', label: 'Raiva', color: 'bg-red-500' },
+  { id: 'surprise', label: 'Surpresa', color: 'bg-green-500' },
+  { id: 'confusion', label: 'Confusão', color: 'bg-amber-500' },
+  { id: 'peace', label: 'Paz', color: 'bg-teal-500' },
+  { id: 'anxiety', label: 'Ansiedade', color: 'bg-orange-500' },
+  { id: 'love', label: 'Amor', color: 'bg-pink-500' }
 ]
-
-// Função para gerar uma cor de gradiente baseada na emoção
-const getGradientForEmotion = (emotionId) => {
-  const emotionColors = {
-    joy: 'from-yellow-300 to-yellow-500',
-    fear: 'from-red-400 to-red-600',
-    sadness: 'from-blue-400 to-blue-600',
-    confusion: 'from-purple-400 to-purple-600',
-    peace: 'from-green-400 to-green-600',
-    anxiety: 'from-orange-400 to-orange-600',
-    surprise: 'from-teal-400 to-teal-600',
-    anger: 'from-pink-400 to-pink-600',
-  }
-  
-  return emotionColors[emotionId] || 'from-primary-400 to-secondary-600'
-}
 
 const DreamAnalysisPage = () => {
   const { darkMode } = useTheme()
-  const [dreamDescription, setDreamDescription] = useState('')
+  const { user, profile, checkDailyLimit } = useAuth()
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
   const [selectedEmotions, setSelectedEmotions] = useState([])
-  const [analysisStep, setAnalysisStep] = useState(1)
-  const [loading, setLoading] = useState(false)
-  const [dreamAnalysis, setDreamAnalysis] = useState(null)
-  const [remainingAnalyses, setRemainingAnalyses] = useState(2)
+  const [dreamId, setDreamId] = useState(null)
+  const [analysis, setAnalysis] = useState(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
+  const [shareSuccess, setShareSuccess] = useState(false)
+  const [step, setStep] = useState(1)
+  const [error, setError] = useState('')
   const [showLimitModal, setShowLimitModal] = useState(false)
+  const [limit, setLimit] = useState({ allowed: false, remaining: 0 })
   
-  const toggleEmotion = (emotionId) => {
+  const navigate = useNavigate()
+  
+  // Buscar limite diário
+  useEffect(() => {
+    if (profile) {
+      const limitInfo = checkDailyLimit('dream')
+      setLimit(limitInfo)
+    }
+  }, [profile, checkDailyLimit])
+  
+  // Verificar autenticação
+  useEffect(() => {
+    if (!user && !isAnalyzing) {
+      navigate('/login')
+    }
+  }, [user, isAnalyzing, navigate])
+  
+  const handleEmotionToggle = (emotionId) => {
     if (selectedEmotions.includes(emotionId)) {
       setSelectedEmotions(selectedEmotions.filter(id => id !== emotionId))
     } else {
@@ -52,93 +62,137 @@ const DreamAnalysisPage = () => {
     }
   }
   
-  const handleAnalyze = () => {
-    if (remainingAnalyses <= 0) {
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    
+    // Validação
+    if (!title.trim()) {
+      setError('Por favor, adicione um título para o seu sonho')
+      return
+    }
+    
+    if (!description.trim() || description.length < 20) {
+      setError('Por favor, descreva seu sonho com mais detalhes (mínimo 20 caracteres)')
+      return
+    }
+    
+    if (selectedEmotions.length === 0) {
+      setError('Por favor, selecione pelo menos uma emoção')
+      return
+    }
+    
+    // Verificar limite
+    if (!limit.allowed) {
       setShowLimitModal(true)
       return
     }
     
-    setLoading(true)
-    
-    // Simulando análise do sonho
-    setTimeout(() => {
-      // Simulação de resultado de análise
-      const result = {
-        symbols: [
-          {
-            name: 'Oceano',
-            meaning: 'Representa o inconsciente e emoções profundas. A vastidão do oceano sugere que você está conectando-se com aspectos mais amplos da sua mente.'
-          },
-          {
-            name: 'Montanha',
-            meaning: 'Simboliza desafios e aspirações. Subir uma montanha no sonho indica que você está enfrentando obstáculos com determinação.'
-          },
-          {
-            name: 'Porta',
-            meaning: 'Representa transições e oportunidades. Uma porta em um sonho sugere que você está prestes a descobrir novas possibilidades em sua vida.'
-          }
-        ],
-        interpretation: `Seu sonho revela uma jornada de autodescoberta. Os cenários e elementos presentes estão conectados com um momento de transição em sua vida. A presença ${selectedEmotions.includes('fear') ? 'do medo' : 'da emoção predominante'} indica que você está processando mudanças significativas.
-
-As imagens sugerem que você está buscando equilíbrio entre desafios (representados pela montanha) e suas emoções profundas (simbolizadas pelo oceano). A narrativa do sonho aponta para um desejo de encontrar estabilidade em meio à transformação.`,
-        
-        futureMessage: 'Este sonho é um reflexo do seu momento atual de vida, mas também contém pistas sobre seu futuro. As decisões que você está considerando agora terão um impacto significativo em sua trajetória. Confie em sua intuição e não tema explorar novos caminhos - seu subconsciente já está lhe guiando nessa direção.',
-        
-        emotionalTone: selectedEmotions.length > 0 ? selectedEmotions[0] : 'neutral'
+    try {
+      setIsAnalyzing(true)
+      
+      // Construir os dados do sonho
+      const dreamData = {
+        title,
+        description,
+        emotions: selectedEmotions.map(id => {
+          const emotion = emotions.find(e => e.id === id)
+          return emotion ? emotion.label : id
+        })
       }
       
-      setDreamAnalysis(result)
-      setLoading(false)
-      setAnalysisStep(2)
-      setRemainingAnalyses(prev => prev - 1)
-    }, 3000)
-  }
-  
-  const resetAnalysis = () => {
-    setDreamDescription('')
-    setSelectedEmotions([])
-    setDreamAnalysis(null)
-    setAnalysisStep(1)
-  }
-  
-  // Componente de visualização artística do sonho
-  const DreamVisualization = ({ emotionId }) => {
-    return (
-      <div className="relative rounded-xl overflow-hidden w-full aspect-video mb-6">
-        <div className={`absolute inset-0 bg-gradient-to-br ${getGradientForEmotion(emotionId)} opacity-70`}></div>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-white text-center px-6">
-            <p className="text-lg font-medium mb-4">Visualização artística do sonho</p>
-            <div className="flex justify-center space-x-2">
-              {Array(5).fill(0).map((_, i) => (
-                <div 
-                  key={i} 
-                  className="w-3 h-12 rounded-full bg-white/30"
-                  style={{ 
-                    animation: `waveAnimation ${1 + i * 0.2}s ease-in-out infinite alternate`,
-                    animationDelay: `${i * 0.1}s`
-                  }}
-                ></div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <style jsx="true">{`
-          @keyframes waveAnimation {
-            0% { height: 12px; }
-            100% { height: 36px; }
-          }
-        `}</style>
-      </div>
-    )
+      // Criar o registro do sonho no banco de dados
+      const { data: dreamResult, error: dreamError } = await createDream(user.id, dreamData)
+      
+      if (dreamError) {
+        throw new Error(dreamError.message || 'Erro ao salvar o sonho')
+      }
+      
+      // Guardar o ID do sonho
+      const newDreamId = dreamResult[0].id
+      setDreamId(newDreamId)
+      
+      // Incrementar contador diário
+      await incrementDailyCounter(user.id, 'dream')
+      
+      // Atualizar informações de limite
+      const newLimitInfo = checkDailyLimit('dream')
+      setLimit(newLimitInfo)
+      
+      // Avançar para o próximo passo
+      setStep(2)
+      
+      // Dados do usuário para contextualização
+      const userData = {
+        name: profile?.name || user.email.split('@')[0],
+        interests: profile?.interests || []
+      }
+      
+      // Analisar o sonho usando a API Claude via Edge Function
+      try {
+        // Chamar a API para analisar o sonho
+        const { analysis: dreamAnalysis, error: analysisError } = await analyzeDream(dreamData, userData)
+        
+        if (analysisError) {
+          console.error('Erro na análise do sonho:', analysisError)
+          throw new Error(analysisError)
+        }
+        
+        // Atualizar o sonho no banco de dados com a análise recebida
+        // Garantir que a análise seja armazenada como JSONB
+        const updatedDreamData = {
+          analysis: typeof dreamAnalysis === 'string' 
+            ? JSON.parse(dreamAnalysis) 
+            : dreamAnalysis
+        }
+        
+        console.log('Salvando análise no banco de dados:', updatedDreamData);
+        
+        // Salvar a análise no banco de dados
+        const { error: updateError } = await updateDream(newDreamId, updatedDreamData)
+        
+        if (updateError) {
+          console.error('Erro ao salvar análise:', updateError)
+        }
+        
+        setAnalysis(dreamAnalysis)
+      } catch (error) {
+        console.error('Falha na análise do sonho:', error)
+        
+        // Fallback em caso de erro - usar uma análise simplificada
+        const fallbackAnalysis = {
+          symbols: [
+            {
+              name: "Símbolo Principal",
+              meaning: "Este símbolo parece representar um aspecto importante do seu subconsciente."
+            }
+          ],
+          interpretation: "Não foi possível realizar uma análise completa do seu sonho neste momento. Por favor, tente novamente mais tarde.",
+          message_from_future: "Toda situação, mesmo as difíceis, trazem aprendizados valiosos.",
+          reflection_questions: [
+            "O que este sonho pode estar tentando me dizer?",
+            "Que padrões deste sonho já apareceram em outras áreas da minha vida?"
+          ]
+        }
+        
+        setAnalysis(fallbackAnalysis)
+      } finally {
+        setIsAnalyzing(false)
+      }
+      
+    } catch (error) {
+      console.error('Erro ao analisar sonho:', error)
+      setError(error.message || 'Ocorreu um erro ao analisar o sonho')
+      setIsAnalyzing(false)
+    }
   }
   
   return (
     <>
       <Navbar />
       
-      <div className={`min-h-screen pt-20 pb-20 ${darkMode ? 'bg-gray-950 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
-        <div className="container-custom max-w-4xl mx-auto">
+      <div className={`min-h-screen pt-20 ${darkMode ? 'bg-gray-950 text-gray-200' : 'bg-gray-50 text-gray-800'}`}>
+        <div className="container-custom py-8 max-w-4xl mx-auto">
           <div className="mb-6 flex justify-between items-center">
             <Link 
               to="/dashboard" 
@@ -151,12 +205,12 @@ As imagens sugerem que você está buscando equilíbrio entre desafios (represen
             </Link>
             
             <div className={`px-3 py-1 rounded-full text-xs font-medium ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
-              {remainingAnalyses} análises restantes hoje
+              {limit.remaining} análises restantes hoje
             </div>
           </div>
           
-          <div className={`rounded-xl overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-white'} shadow-lg`}>
-            <div className="p-4 border-b flex items-center gap-4 bg-gradient-to-r from-primary-600 to-secondary-600 text-white">
+          <div className={`rounded-xl overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-white'} shadow-lg mb-8`}>
+            <div className="p-4 border-b flex items-center gap-4 bg-gradient-to-r from-secondary-600 to-primary-600 text-white">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
@@ -164,179 +218,281 @@ As imagens sugerem que você está buscando equilíbrio entre desafios (represen
               </div>
               <div>
                 <h2 className="font-heading font-semibold text-white text-lg">Análise de Sonhos</h2>
-                <p className="text-white/80 text-sm">Descubra os significados ocultos nos seus sonhos</p>
+                <p className="text-white/80 text-sm">Descubra os significados e mensagens ocultas em seus sonhos</p>
               </div>
             </div>
             
             <div className="p-6">
+              {error && (
+                <div className="mb-6 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+              
               <AnimatePresence mode="wait">
-                {analysisStep === 1 ? (
+                {step === 1 && (
                   <motion.div
                     key="step1"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
                   >
-                    <div className="mb-8">
-                      <label htmlFor="dream-description" className={`block text-base font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                        Descreva seu sonho em detalhes
-                      </label>
-                      <textarea
-                        id="dream-description"
-                        value={dreamDescription}
-                        onChange={(e) => setDreamDescription(e.target.value)}
-                        className={`w-full p-4 rounded-lg border ${
-                          darkMode 
-                            ? 'bg-gray-800 text-white border-gray-700 focus:border-primary-500' 
-                            : 'bg-white text-gray-900 border-gray-300 focus:border-primary-400'
-                        } focus:ring-2 focus:ring-primary-500 focus:outline-none transition-colors`}
-                        placeholder="Descreva o cenário, personagens, emoções e eventos do seu sonho..."
-                        rows={6}
-                      />
-                      <p className={`mt-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Quanto mais detalhes você fornecer, mais precisa será a análise.
-                      </p>
-                    </div>
-                    
-                    <div className="mb-8">
-                      <label className={`block text-base font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                        Quais emoções você sentiu durante o sonho?
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {emotions.map((emotion) => (
-                          <button
-                            key={emotion.id}
-                            type="button"
-                            onClick={() => toggleEmotion(emotion.id)}
-                            className={`py-2 px-3 rounded-lg border text-sm transition-colors
-                              ${selectedEmotions.includes(emotion.id)
-                                ? `border-${emotion.color}-500 bg-${emotion.color}-50 text-${emotion.color}-700 dark:bg-${emotion.color}-900/30 dark:text-${emotion.color}-400`
-                                : darkMode
-                                  ? 'border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700'
-                                  : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
-                              }
-                            `}
-                          >
-                            {emotion.label}
-                          </button>
-                        ))}
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                      <div>
+                        <label htmlFor="title" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          Título do Sonho
+                        </label>
+                        <input
+                          id="title"
+                          type="text"
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          className={`w-full px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
+                          placeholder="Ex: Voando sobre o oceano"
+                          required
+                        />
                       </div>
-                    </div>
-                    
-                    <div className="flex justify-end">
-                      <button
-                        onClick={handleAnalyze}
-                        disabled={!dreamDescription.trim() || loading}
-                        className={`${
-                          !dreamDescription.trim() || loading
-                            ? 'opacity-50 cursor-not-allowed'
-                            : 'hover:bg-opacity-90'
-                        } btn-primary`}
-                      >
-                        {loading ? (
-                          <span className="flex items-center gap-2">
-                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Analisando sonho...
-                          </span>
-                        ) : 'Analisar Sonho'}
-                      </button>
-                    </div>
+                      
+                      <div>
+                        <label htmlFor="description" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          Descrição Detalhada
+                        </label>
+                        <textarea
+                          id="description"
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          className={`w-full px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
+                          placeholder="Descreva seu sonho com o máximo de detalhes que conseguir lembrar..."
+                          rows={6}
+                          required
+                        />
+                        <p className={`mt-1 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          Quanto mais detalhes você incluir, mais precisa será a análise.
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          Emoções Sentidas Durante o Sonho
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {emotions.map((emotion) => (
+                            <button
+                              key={emotion.id}
+                              type="button"
+                              onClick={() => handleEmotionToggle(emotion.id)}
+                              className={`px-3 py-2 rounded-full text-sm font-medium transition-colors
+                                ${selectedEmotions.includes(emotion.id)
+                                  ? `${emotion.color} text-white`
+                                  : darkMode
+                                    ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }
+                              `}
+                            >
+                              {emotion.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div className="pt-4">
+                        <button
+                          type="submit"
+                          className="w-full btn-secondary"
+                        >
+                          Analisar Sonho
+                        </button>
+                      </div>
+                    </form>
                   </motion.div>
-                ) : (
+                )}
+                
+                {step === 2 && (
                   <motion.div
                     key="step2"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex flex-col items-center justify-center py-8"
                   >
-                    <div className="mb-8 text-center">
-                      <h3 className={`text-2xl font-heading font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                        Análise do Seu Sonho
-                      </h3>
-                    </div>
-                    
-                    <DreamVisualization emotionId={dreamAnalysis?.emotionalTone} />
-                    
-                    <div className="space-y-8">
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className={`rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}
-                      >
-                        <h4 className={`text-lg font-heading font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                          Símbolos Principais
-                        </h4>
-                        <div className="space-y-4">
-                          {dreamAnalysis?.symbols.map((symbol, index) => (
-                            <div key={index} className="flex gap-3">
-                              <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white mt-1">
-                                <span className="text-xs font-bold">{index + 1}</span>
-                              </div>
-                              <div>
-                                <h5 className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{symbol.name}</h5>
-                                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{symbol.meaning}</p>
+                    {isAnalyzing ? (
+                      <div className="text-center">
+                        <div className="w-20 h-20 mx-auto mb-6 relative">
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-secondary-500 to-primary-500 animate-spin opacity-25"></div>
+                          <div className="absolute inset-2 rounded-full bg-gradient-to-r from-secondary-500 to-primary-500 animate-pulse"></div>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-white">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+                            </svg>
+                          </div>
+                        </div>
+                        <h3 className={`text-xl font-heading font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          Analisando Seu Sonho...
+                        </h3>
+                        <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Estamos decifrando os símbolos e mensagens do seu subconsciente.
+                        </p>
+                      </div>
+                    ) : analysis ? (
+                      <div className="w-full">
+                        <h3 className={`text-xl font-heading font-bold mb-6 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          Análise do Sonho: {title}
+                        </h3>
+                        
+                        <div className="space-y-8">
+                          <div>
+                            <h4 className={`text-lg font-heading font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                              Símbolos Principais
+                            </h4>
+                            <div className="space-y-4">
+                              {analysis.symbols.map((symbol, index) => (
+                                <div 
+                                  key={index}
+                                  className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}
+                                >
+                                  <h5 className={`font-medium mb-1 ${darkMode ? 'text-secondary-400' : 'text-secondary-600'}`}>
+                                    {symbol.name}
+                                  </h5>
+                                  <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {symbol.meaning}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <h4 className={`text-lg font-heading font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                              Interpretação
+                            </h4>
+                            <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                              <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                {analysis.interpretation}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <h4 className={`text-lg font-heading font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                              Mensagem do Futuro
+                            </h4>
+                            <div className={`p-4 rounded-lg bg-gradient-to-r from-primary-600/20 to-secondary-600/20 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-secondary-500 to-primary-500 flex items-center justify-center mr-3">
+                                  <span className="text-xs font-bold text-white">F</span>
+                                </div>
+                                <p className="italic">
+                                  "{analysis.message_from_future}"
+                                </p>
                               </div>
                             </div>
-                          ))}
+                          </div>
+                          
+                          <div>
+                            <h4 className={`text-lg font-heading font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                              Perguntas para Reflexão
+                            </h4>
+                            <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                              <ul className={`space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                {analysis.reflection_questions.map((question, index) => (
+                                  <li key={index} className="flex items-start">
+                                    <span className="mr-2">•</span>
+                                    {question}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
                         </div>
-                      </motion.div>
-                      
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4 }}
-                        className={`rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}
-                      >
-                        <h4 className={`text-lg font-heading font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                          Interpretação
-                        </h4>
-                        <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} whitespace-pre-line`}>
-                          {dreamAnalysis?.interpretation}
+                        
+                        <div className="flex justify-between mt-8">
+                          <button
+                            onClick={() => setStep(1)}
+                            className={`px-4 py-2 rounded-lg font-medium ${
+                              darkMode
+                                ? 'bg-gray-800 text-gray-200 hover:bg-gray-700'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            Novo Sonho
+                          </button>
+                          
+                          <button
+                            onClick={async () => {
+                              if (!dreamId) return;
+                              
+                              try {
+                                setIsSharing(true);
+                                // Criar compartilhamento
+                                const { data, error } = await createShareCard(
+                                  user.id,
+                                  'dream',
+                                  dreamId
+                                );
+                                
+                                if (error) throw error;
+                                
+                                setShareSuccess(true);
+                                // Esconder mensagem de sucesso após 3 segundos
+                                setTimeout(() => setShareSuccess(false), 3000);
+                              } catch (err) {
+                                console.error('Erro ao compartilhar sonho:', err);
+                                setError('Erro ao compartilhar sonho. Tente novamente mais tarde.');
+                              } finally {
+                                setIsSharing(false);
+                              }
+                            }}
+                            disabled={isSharing}
+                            className="btn-outline flex items-center gap-2"
+                          >
+                            {isSharing ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-1"></div>
+                                Compartilhando...
+                              </>
+                            ) : shareSuccess ? (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Compartilhado!
+                              </>
+                            ) : (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935-2.186 2.25 2.25 0 0 0-3.935-2.186" />
+                                </svg>
+                                Compartilhar
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          Ocorreu um erro ao analisar o sonho. Por favor, tente novamente.
                         </p>
-                      </motion.div>
-                      
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.6 }}
-                        className="rounded-xl p-6 bg-gradient-to-br from-primary-600 to-secondary-600 text-white"
-                      >
-                        <h4 className="text-lg font-heading font-semibold mb-4">
-                          Mensagem do Futuro
-                        </h4>
-                        <p className="whitespace-pre-line">
-                          {dreamAnalysis?.futureMessage}
-                        </p>
-                      </motion.div>
-                    </div>
-                    
-                    <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-                      <button
-                        onClick={resetAnalysis}
-                        className="btn-primary"
-                      >
-                        Analisar Outro Sonho
-                      </button>
-                      
-                      <button
-                        className={`btn ${darkMode ? 'border border-gray-700 text-white hover:bg-gray-800' : 'border border-gray-300 text-gray-700 hover:bg-gray-100'}`}
-                      >
-                        Compartilhar Análise
-                      </button>
-                    </div>
+                        <button
+                          onClick={() => setStep(1)}
+                          className="mt-4 btn-primary"
+                        >
+                          Voltar e Tentar Novamente
+                        </button>
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
           </div>
           
-          <div className="mt-4 text-center">
+          <div className="text-center">
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              As análises são baseadas em psicologia dos sonhos e simbologia arquetípica, mas não substituem aconselhamento profissional.
+              As análises são baseadas em simbolismo e psicologia dos sonhos, mas não substituem aconselhamento profissional.
             </p>
           </div>
         </div>
@@ -367,7 +523,7 @@ As imagens sugerem que você está buscando equilíbrio entre desafios (represen
                   Limite de Análises Atingido
                 </h3>
                 <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
-                  Você atingiu seu limite diário de análises de sonhos gratuitas. Faça um upgrade para continuar explorando os significados dos seus sonhos sem limitações.
+                  Você atingiu seu limite diário de análises de sonhos gratuitas. Faça um upgrade para continuar decifrando seus sonhos sem limitações.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Link to="/subscription" className="btn-primary">
