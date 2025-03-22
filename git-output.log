@@ -1,0 +1,72 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	new file:   Taabelas do supabase.txt
+	new file:   debug-git.sh
+	new file:   git-comandos.sh
+	new file:   git-output.log
+	modified:   src/contexts/AuthContext.jsx
+	modified:   src/pages/ConversationPage.jsx
+	modified:   src/pages/RegisterPage.jsx
+	new file:   src/services/anthropic.js
+	new file:   src/services/supabase.js
+	new file:   supabase/functions/call-anthropic-api/index.js
+
+[main 0893805] Adicionando alterações
+ Committer: Valdair  Demello <valdair@MacBook-Air-de-Valdair.local>
+Your name and email address were configured automatically based
+on your username and hostname. Please check that they are accurate.
+You can suppress this message by setting them explicitly. Run the
+following command and follow the instructions in your editor to edit
+your configuration file:
+
+    git config --global --edit
+
+After doing this, you may fix the identity used for this commit with:
+
+    git commit --amend --reset-author
+
+ 10 files changed, 908 insertions(+), 160 deletions(-)
+ create mode 100644 Taabelas do supabase.txt
+ create mode 100755 debug-git.sh
+ create mode 100755 git-comandos.sh
+ create mode 100644 git-output.log
+ create mode 100644 src/services/anthropic.js
+ create mode 100644 src/services/supabase.js
+ create mode 100644 supabase/functions/call-anthropic-api/index.js
+On branch main
+Your branch is ahead of 'origin/main' by 1 commit.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   git-output.log
+
+no changes added to commit (use "git add" and/or "git commit -a")
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   git-output.log
+
+no changes added to commit (use "git add" and/or "git commit -a")
+credential.helper=osxkeychain
+init.defaultbranch=main
+core.repositoryformatversion=0
+core.filemode=true
+core.bare=false
+core.logallrefupdates=true
+core.ignorecase=true
+core.precomposeunicode=true
+remote.origin.url=https://github.com/BVStecnologia/Reflexo-Temporal.git
+remote.origin.fetch=+refs/heads/*:refs/remotes/origin/*
+pull.rebase=false
+branch.main.remote=origin
+branch.main.merge=refs/heads/main
+origin	https://github.com/BVStecnologia/Reflexo-Temporal.git (fetch)
+origin	https://github.com/BVStecnologia/Reflexo-Temporal.git (push)
